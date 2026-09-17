@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>외식운영팀 식대 관리 시스템</title>
 
+<!-- Supabase JS Client CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <style>
 /* McDonald's Theme Palette */
 :root {
@@ -30,7 +33,6 @@ body {
     color: var(--mcd-text);
 }
 
-/* McDonald's Header Style */
 header {
     background-color: var(--mcd-red);
     color: white;
@@ -53,7 +55,6 @@ header h1 {
     padding: 0 20px;
 }
 
-/* Card Styling */
 .card {
     background: var(--mcd-card-bg);
     padding: 28px;
@@ -83,7 +84,6 @@ header h1 {
     border-radius: 4px;
 }
 
-/* Form Grid System */
 .grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -114,7 +114,6 @@ input:focus, select:focus {
     background-color: #FFF;
 }
 
-/* Buttons */
 button {
     border: none;
     border-radius: 25px;
@@ -178,7 +177,6 @@ button:active {
     font-size: 13px;
 }
 
-/* Menu Section */
 .menu-section-header {
     display: flex;
     align-items: center;
@@ -193,7 +191,6 @@ button:active {
     margin-bottom: 10px;
 }
 
-/* Table Styling */
 table {
     width: 100%;
     border-collapse: separate;
@@ -226,7 +223,6 @@ table tr:nth-child(even) {
     background-color: #FCFCFC;
 }
 
-/* Summary Dashboard */
 .summary-container {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -256,7 +252,6 @@ table tr:nth-child(even) {
     font-size: 14px;
 }
 
-/* Modal Styling for Editing */
 .modal-overlay {
     display: none;
     position: fixed;
@@ -284,7 +279,6 @@ table tr:nth-child(even) {
 
 <div class="container">
 
-<!-- 식대 등록 카드리뉴얼 -->
 <div class="card">
     <h2>식사 등록</h2>
     
@@ -322,7 +316,6 @@ table tr:nth-child(even) {
     <button class="btn-primary" style="width: 100%; font-size: 18px;" onclick="saveMeal()">식사 등록하기</button>
 </div>
 
-<!-- 관리자 조회 카드리뉴얼 -->
 <div class="card">
     <h2>관리자 조회 및 수정</h2>
 
@@ -378,7 +371,6 @@ table tr:nth-child(even) {
 
 </div>
 
-<!-- 수정 모달 (Modal) -->
 <div class="modal-overlay" id="editModal">
     <div class="modal-content">
         <h3 style="color:var(--mcd-red); margin-top:0;">등록 정보 수정</h3>
@@ -409,6 +401,11 @@ table tr:nth-child(even) {
 </div>
 
 <script>
+// Supabase 접속 정보 대입 완료
+const SUPABASE_URL = 'https://uttlxkikvdiaqlchrsnt.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_Tsh7NFNO-I5_gfsR01ArSQ_X9NSS_MW';
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
 const ADMIN_PW = "1234";
 
 const stores = [
@@ -467,7 +464,6 @@ function changeMainMenuType(){
     container.innerHTML = `<div class="menu-row">${createMainMenuField()}</div>`;
 }
 
-// 3번 수정사항: 메뉴 추가 시 필수 체크 제거
 function addMenu(){
     const div = document.createElement("div");
     div.className = "menu-row";
@@ -475,8 +471,8 @@ function addMenu(){
     document.getElementById("menuContainer").appendChild(div);
 }
 
-// 2, 3번 수정사항: 빈 메뉴명 허용 및 식사 등록하기
-function saveMeal(){
+// Supabase DB 저장
+async function saveMeal(){
     const date = mealDate.value;
     const store = homeStore.value;
     const employee = employeeName.value.trim();
@@ -498,19 +494,21 @@ function saveMeal(){
         return;
     }
 
-    const record = {
-        id: Date.now(),
-        mealDate: date,
-        homeStore: store,
-        employeeName: employee,
-        mealStore: meal,
-        menuName: menus.join(", "), // 빈 메뉴일 경우 빈 문자열 저장
-        amount: Number(amountValue)
-    };
+    const { error } = await _supabase
+        .from('meals')
+        .insert([{
+            meal_date: date,
+            home_store: store,
+            employee_name: employee,
+            meal_store: meal,
+            menu_name: menus.join(", "),
+            amount: Number(amountValue)
+        }]);
 
-    const list = JSON.parse(localStorage.getItem("mealData") || "[]");
-    list.push(record);
-    localStorage.setItem("mealData", JSON.stringify(list));
+    if(error){
+        alert("저장 중 오류가 발생했습니다: " + error.message);
+        return;
+    }
 
     alert("식대 정보가 성공적으로 등록되었습니다.");
 
@@ -521,7 +519,49 @@ function saveMeal(){
     searchData();
 }
 
-// 4번 수정사항: 수정 기능 추가 (비밀번호 확인 포함)
+// Supabase DB 조회
+async function searchData(){
+    const start = searchStart.value;
+    const end = searchEnd.value;
+    const store = searchStore.value;
+
+    let query = _supabase.from('meals').select('*').order('meal_date', { ascending: false });
+
+    if(start) query = query.gte('meal_date', start);
+    if(end) query = query.lte('meal_date', end);
+    if(store) query = query.eq('home_store', store);
+
+    const { data, error } = await query;
+
+    if(error){
+        console.error("조회 실패:", error);
+        return;
+    }
+
+    currentResult = data || [];
+    const tbody = document.getElementById("resultBody");
+    tbody.innerHTML = "";
+
+    currentResult.forEach(item => {
+        tbody.innerHTML += `
+        <tr>
+            <td>${item.meal_date}</td>
+            <td>${item.home_store}</td>
+            <td>${item.employee_name}</td>
+            <td>${item.meal_store}</td>
+            <td>${item.menu_name || '-'}</td>
+            <td>${Number(item.amount).toLocaleString()}원</td>
+            <td>
+                <button class="btn-edit" onclick="openEditModal(${item.id})">수정</button>
+                <button class="btn-delete" onclick="deleteRecord(${item.id})">삭제</button>
+            </td>
+        </tr>
+        `;
+    });
+
+    createSummary(currentResult);
+}
+
 function openEditModal(id) {
     const password = prompt("수정하려면 관리자 비밀번호를 입력하세요.");
     if (password !== ADMIN_PW) {
@@ -529,15 +569,13 @@ function openEditModal(id) {
         return;
     }
 
-    const list = JSON.parse(localStorage.getItem("mealData") || "[]");
-    const item = list.find(x => x.id === id);
-
+    const item = currentResult.find(x => x.id === id);
     if (!item) return;
 
     document.getElementById("editId").value = item.id;
-    document.getElementById("editMealDate").value = item.mealDate;
-    document.getElementById("editEmployeeName").value = item.employeeName;
-    document.getElementById("editMenuName").value = item.menuName;
+    document.getElementById("editMealDate").value = item.meal_date;
+    document.getElementById("editEmployeeName").value = item.employee_name;
+    document.getElementById("editMenuName").value = item.menu_name || '';
     document.getElementById("editAmount").value = item.amount;
 
     document.getElementById("editModal").style.display = "flex";
@@ -547,26 +585,32 @@ function closeEditModal() {
     document.getElementById("editModal").style.display = "none";
 }
 
-function submitEdit() {
+// Supabase DB 수정
+async function submitEdit() {
     const id = Number(document.getElementById("editId").value);
-    let list = JSON.parse(localStorage.getItem("mealData") || "[]");
+    
+    const { error } = await _supabase
+        .from('meals')
+        .update({
+            meal_date: document.getElementById("editMealDate").value,
+            employee_name: document.getElementById("editEmployeeName").value.trim(),
+            menu_name: document.getElementById("editMenuName").value.trim(),
+            amount: Number(document.getElementById("editAmount").value)
+        })
+        .eq('id', id);
 
-    const index = list.findIndex(x => x.id === id);
-    if (index !== -1) {
-        list[index].mealDate = document.getElementById("editMealDate").value;
-        list[index].employeeName = document.getElementById("editEmployeeName").value.trim();
-        list[index].menuName = document.getElementById("editMenuName").value.trim();
-        list[index].amount = Number(document.getElementById("editAmount").value);
-
-        localStorage.setItem("mealData", JSON.stringify(list));
-        alert("수정이 완료되었습니다.");
-        closeEditModal();
-        searchData();
+    if(error){
+        alert("수정 실패: " + error.message);
+        return;
     }
+
+    alert("수정이 완료되었습니다.");
+    closeEditModal();
+    searchData();
 }
 
-// 기존 삭제 기능 유지 (비밀번호 검증)
-function deleteRecord(id){
+// Supabase DB 삭제
+async function deleteRecord(id){
     const password = prompt("삭제 비밀번호를 입력하세요.");
 
     if(password !== ADMIN_PW){
@@ -574,47 +618,18 @@ function deleteRecord(id){
         return;
     }
 
-    let list = JSON.parse(localStorage.getItem("mealData") || "[]");
-    list = list.filter(item => item.id !== id);
-    localStorage.setItem("mealData", JSON.stringify(list));
+    const { error } = await _supabase
+        .from('meals')
+        .delete()
+        .eq('id', id);
+
+    if(error){
+        alert("삭제 실패: " + error.message);
+        return;
+    }
 
     alert("삭제 완료");
     searchData();
-}
-
-function searchData(){
-    const start = searchStart.value;
-    const end = searchEnd.value;
-    const store = searchStore.value;
-
-    let data = JSON.parse(localStorage.getItem("mealData") || "[]");
-
-    if(start) data = data.filter(x => x.mealDate >= start);
-    if(end) data = data.filter(x => x.mealDate <= end);
-    if(store) data = data.filter(x => x.homeStore === store);
-
-    currentResult = data;
-    const tbody = document.getElementById("resultBody");
-    tbody.innerHTML = "";
-
-    data.forEach(item => {
-        tbody.innerHTML += `
-        <tr>
-            <td>${item.mealDate}</td>
-            <td>${item.homeStore}</td>
-            <td>${item.employeeName}</td>
-            <td>${item.mealStore}</td>
-            <td>${item.menuName || '-'}</td>
-            <td>${item.amount.toLocaleString()}원</td>
-            <td>
-                <button class="btn-edit" onclick="openEditModal(${item.id})">수정</button>
-                <button class="btn-delete" onclick="deleteRecord(${item.id})">삭제</button>
-            </td>
-        </tr>
-        `;
-    });
-
-    createSummary(data);
 }
 
 function createSummary(data){
@@ -622,8 +637,8 @@ function createSummary(data){
     const mealTotal = {};
 
     data.forEach(item => {
-        empTotal[item.employeeName] = (empTotal[item.employeeName] || 0) + item.amount;
-        mealTotal[item.mealStore] = (mealTotal[item.mealStore] || 0) + item.amount;
+        empTotal[item.employee_name] = (empTotal[item.employee_name] || 0) + Number(item.amount);
+        mealTotal[item.meal_store] = (mealTotal[item.meal_store] || 0) + Number(item.amount);
     });
 
     let empHtml = "";
@@ -648,7 +663,7 @@ function downloadExcel(){
 
     let csv = "식사날짜,소속매장,직원명,식사매장,메뉴명,금액\n";
     currentResult.forEach(item => {
-        csv += `${item.mealDate},${item.homeStore},${item.employeeName},${item.mealStore},"${item.menuName || ''}",${item.amount}\n`;
+        csv += `${item.meal_date},${item.home_store},${item.employee_name},${item.meal_store},"${item.menu_name || ''}",${item.amount}\n`;
     });
 
     const blob = new Blob(["\ufeff" + csv], {type: "text/csv;charset=utf-8;"});
@@ -661,28 +676,6 @@ function downloadExcel(){
 }
 
 initialize();
-    <!-- Supabase JS CDN 추가 -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script>
-  const SUPABASE_URL = 'https://your-project.supabase.co';
-  const SUPABASE_ANON_KEY = 'your-anon-key';
-  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-  // 저장 예시 (saveMeal 함수 내부 대치)
-  async function saveMealToSupabase(record) {
-    const { data, error } = await supabase
-      .from('meals')
-      .insert([{
-        meal_date: record.mealDate,
-        home_store: record.homeStore,
-        employee_name: record.employeeName,
-        meal_store: record.mealStore,
-        menu_name: record.menuName,
-        amount: record.amount
-      }]);
-    if (error) console.error(error);
-  }
-</script>
 </script>
 
 </body>
