@@ -661,6 +661,28 @@ function downloadExcel(){
 }
 
 initialize();
+    <!-- Supabase JS CDN 추가 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const SUPABASE_URL = 'https://your-project.supabase.co';
+  const SUPABASE_ANON_KEY = 'your-anon-key';
+  const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // 저장 예시 (saveMeal 함수 내부 대치)
+  async function saveMealToSupabase(record) {
+    const { data, error } = await supabase
+      .from('meals')
+      .insert([{
+        meal_date: record.mealDate,
+        home_store: record.homeStore,
+        employee_name: record.employeeName,
+        meal_store: record.mealStore,
+        menu_name: record.menuName,
+        amount: record.amount
+      }]);
+    if (error) console.error(error);
+  }
+</script>
 </script>
 
 </body>
