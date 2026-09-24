@@ -7,6 +7,8 @@
 
 <!-- Supabase JS Client CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- SheetJS (XLSX) CDN -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
 <style>
 /* McDonald's Theme Palette */
@@ -371,6 +373,7 @@ table tr:nth-child(even) {
 
 </div>
 
+<!-- 수정 모달 -->
 <div class="modal-overlay" id="editModal">
     <div class="modal-content">
         <h3 style="color:var(--mcd-red); margin-top:0;">등록 정보 수정</h3>
@@ -379,6 +382,10 @@ table tr:nth-child(even) {
         <div class="form-group" style="margin-bottom:10px;">
             <label>식사 날짜</label>
             <input type="date" id="editMealDate">
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+            <label>소속매장</label>
+            <select id="editHomeStore"></select>
         </div>
         <div class="form-group" style="margin-bottom:10px;">
             <label>직원명</label>
@@ -401,7 +408,7 @@ table tr:nth-child(even) {
 </div>
 
 <script>
-// Supabase 접속 정보 대입 완료
+// Supabase 접속 정보
 const SUPABASE_URL = 'https://uttlxkikvdiaqlchrsnt.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_Tsh7NFNO-I5_gfsR01ArSQ_X9NSS_MW';
 const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
@@ -436,6 +443,7 @@ function initialize(){
     stores.forEach(store => {
         homeStore.innerHTML += `<option value="${store}">${store}</option>`;
         searchStore.innerHTML += `<option value="${store}">${store}</option>`;
+        editHomeStore.innerHTML += `<option value="${store}">${store}</option>`;
     });
 
     mealStores.forEach(store => {
@@ -574,6 +582,7 @@ function openEditModal(id) {
 
     document.getElementById("editId").value = item.id;
     document.getElementById("editMealDate").value = item.meal_date;
+    document.getElementById("editHomeStore").value = item.home_store;
     document.getElementById("editEmployeeName").value = item.employee_name;
     document.getElementById("editMenuName").value = item.menu_name || '';
     document.getElementById("editAmount").value = item.amount;
@@ -593,6 +602,7 @@ async function submitEdit() {
         .from('meals')
         .update({
             meal_date: document.getElementById("editMealDate").value,
+            home_store: document.getElementById("editHomeStore").value,
             employee_name: document.getElementById("editEmployeeName").value.trim(),
             menu_name: document.getElementById("editMenuName").value.trim(),
             amount: Number(document.getElementById("editAmount").value)
@@ -655,24 +665,61 @@ function createSummary(data){
     mealStoreSummary.innerHTML = mealHtml || "조회결과 없음";
 }
 
+// 다중 시트 엑셀 다운로드 함수
 function downloadExcel(){
     if(currentResult.length === 0){
         alert("조회된 데이터가 없습니다.");
         return;
     }
 
-    let csv = "식사날짜,소속매장,직원명,식사매장,메뉴명,금액\n";
+    // 요약 데이터 계산
+    const empTotal = {};
+    const mealTotal = {};
+
     currentResult.forEach(item => {
-        csv += `${item.meal_date},${item.home_store},${item.employee_name},${item.meal_store},"${item.menu_name || ''}",${item.amount}\n`;
+        empTotal[item.employee_name] = (empTotal[item.employee_name] || 0) + Number(item.amount);
+        mealTotal[item.meal_store] = (mealTotal[item.meal_store] || 0) + Number(item.amount);
     });
 
-    const blob = new Blob(["\ufeff" + csv], {type: "text/csv;charset=utf-8;"});
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `식대정보_${new Date().getTime()}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+    // 1번 시트: 직원별 사용금액 Summary
+    const empData = [["직원명", "사용금액(원)"]];
+    for(let key in empTotal){
+        empData.push([key, empTotal[key]]);
+    }
+
+    // 2번 시트: 식사매장별 사용금액 Summary
+    const mealData = [["식사매장", "사용금액(원)"]];
+    for(let key in mealTotal){
+        mealData.push([key, mealTotal[key]]);
+    }
+
+    // 3번 시트: 상세 내역
+    const detailData = [["식사 날짜", "소속매장", "직원명", "식사매장", "메뉴명", "금액(원)"]];
+    currentResult.forEach(item => {
+        detailData.push([
+            item.meal_date,
+            item.home_store,
+            item.employee_name,
+            item.meal_store,
+            item.menu_name || '',
+            Number(item.amount)
+        ]);
+    });
+
+    // XLSX 워크북 생성 및 시트 추가
+    const wb = XLSX.utils.book_new();
+
+    const wsEmp = XLSX.utils.aoa_to_sheet(empData);
+    const wsMeal = XLSX.utils.aoa_to_sheet(mealData);
+    const wsDetail = XLSX.utils.aoa_to_sheet(detailData);
+
+    XLSX.utils.book_append_sheet(wb, wsEmp, "직원별 Summary");
+    XLSX.utils.book_append_sheet(wb, wsMeal, "식사매장별 Summary");
+    XLSX.utils.book_append_sheet(wb, wsDetail, "식대 내역");
+
+    // 엑셀 파일 저장 (.xlsx)
+    const fileName = `식대관리_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, fileName);
 }
 
 initialize();
